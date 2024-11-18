@@ -1,0 +1,4 @@
+Scenario Name,Baseline Consumption (kWh/year),Change 1 Percentage Change,Change 1 Start Year,Change 1 Duration,Change 2 Percentage Change,Change 2 Start Year,Change 2 Duration
+maintain_baseline,94000,0,0,0,0,0,0
+increase_then_reduce,94000,5,1,3,-3,4,2
+variable_changes,94000,2,1,2,-2,4,3
