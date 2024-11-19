@@ -31,10 +31,11 @@ for input_index, input_row in input_data.iterrows():
     opex_hike_percentage = input_row['OPEX Hike Percentage (%)'] / 100
     opex_hike_interval = int(input_row['OPEX Hike Interval (years)'])
     opex_start_year = int(input_row['OPEX Start Year'])
+    energy_export_allowed = input_row['Energy Export Allowed']
 
     total_investment_cost = capacity_kWp * cost_per_kwp + additional_structure_cost
     base_investment_cost = capacity_kWp * cost_per_kwp  # Without additional installation cost
-    tax_saving_gita = 0.3 * total_investment_cost  # 30% tax saving from GITA
+    tax_saving_gita = 0.3 * base_investment_cost  # 30% tax saving from GITA
 
     # Scenario Definitions
     def generate_consumption_scenarios(years, baseline, percentage_changes):
@@ -80,6 +81,9 @@ for input_index, input_row in input_data.iterrows():
         cumulative_cash_flows_base = []
         tnb_buyback_rates = []
         opex_values = []
+        capital_expenses = []
+        total_expenses = []
+        total_incomes = []
 
         # Calculate PV Generation and Annual Consumption for each year
         cumulative_savings_total = -total_investment_cost
@@ -119,13 +123,13 @@ for input_index, input_row in input_data.iterrows():
 
             # Consumed PV Power and Excess Energy Exported
             consumed_pv_power = min(pv_generation, annual_consumptions[year - 1])
-            excess_energy = max(0, pv_generation - annual_consumptions[year - 1])
+            excess_energy = max(0, pv_generation - annual_consumptions[year - 1]) if energy_export_allowed else 0
             consumed_pv_powers.append(consumed_pv_power)
             excess_energy_exported.append(excess_energy)
 
             # Energy Savings Calculations
             consumption_saving = consumed_pv_power * electricity_tariff
-            export_saving = excess_energy * tnb_buyback_rate
+            export_saving = excess_energy * tnb_buyback_rate if energy_export_allowed else 0
             energy_savings.append(consumption_saving)
             exported_energy_savings.append(export_saving)
 
@@ -137,10 +141,22 @@ for input_index, input_row in input_data.iterrows():
             consumption_percentage = (consumed_pv_power / annual_consumptions[year - 1]) * 100
             solar_consumption_percentages.append(consumption_percentage)
 
+            # Capital Expenses (initial investment cost)
+            capital_expense = total_investment_cost if year == 1 else 0
+            capital_expenses.append(capital_expense)
+
+            # Total Expenses for the year (OPEX + Capital Expenses)
+            total_expense = opex_values[-1] + capital_expense
+            total_expenses.append(total_expense)
+
+            # Total Income for the year (Energy Savings + Exported Energy Savings + Tax Savings)
+            total_income = consumption_saving + export_saving + tax_saving
+            total_incomes.append(total_income)
+
             # Cumulative Cash Flow Calculation (with and without additional installation cost)
-            annual_cash_flow = consumption_saving + export_saving + tax_saving - opex_values[-1]
+            annual_cash_flow = total_income - total_expense
             cumulative_savings_total += annual_cash_flow
-            cumulative_savings_base += (consumption_saving + export_saving - opex_values[-1])  # Without tax savings and additional installation cost
+            cumulative_savings_base += (total_income - opex_values[-1])  # Without tax savings and additional installation cost
             cumulative_cash_flows_total.append(cumulative_savings_total)
             cumulative_cash_flows_base.append(cumulative_savings_base)
 
@@ -149,7 +165,6 @@ for input_index, input_row in input_data.iterrows():
             'Year': list(range(1, years_projection + 1)),
             'PV Generation Rate (kWh/kWp/year)': pv_generation_rates,
             'PV Generation (kWh/year)': pv_generations,
-            'Annual Consumption (kWh/year)': annual_consumptions,
             'Consumed PV Power (kWh/year)': consumed_pv_powers,
             'Excess Energy Exported (kWh/year)': excess_energy_exported,
             'Electricity Tariff (RM/kWh)': electricity_tariffs,
@@ -158,16 +173,18 @@ for input_index, input_row in input_data.iterrows():
             'Exported Energy Saving (RM)': exported_energy_savings,
             'Tax Saving from GITA (RM)': tax_savings,
             'OPEX (RM)': opex_values,
+            'Capital Expense (RM)': capital_expenses,
+            'Total Expense (RM)': total_expenses,
+            'Total Income (RM)': total_incomes,
             'Cumulative Cash Flow with Additional Cost (RM)': cumulative_cash_flows_total,
-            'Cumulative Cash Flow without Additional Cost (RM)': cumulative_cash_flows_base,
-            'Solar Consumption Percentage (%)': solar_consumption_percentages
+            'Cumulative Cash Flow without Additional Cost (RM)': cumulative_cash_flows_base
         }
 
         scenario_key = f"Input_{input_index + 1}_{scenario_name}"
         scenario_results[scenario_key] = pd.DataFrame(data)
 
         # Calculate IRR using numpy_financial's irr function (with and without additional installation cost)
-        cash_flows_total = [initial_investment_total] + [energy_savings[year] + exported_energy_savings[year] + tax_savings[year] - opex_values[year] for year in range(years_projection)]
+        cash_flows_total = [initial_investment_total] + [total_incomes[year] - total_expenses[year] for year in range(years_projection)]
         cash_flows_base = [initial_investment_base] + [energy_savings[year] + exported_energy_savings[year] - opex_values[year] for year in range(years_projection)]
 
         irr_total = npf.irr(cash_flows_total)
@@ -200,10 +217,40 @@ for input_index, input_row in input_data.iterrows():
         else:
             print(f"Input Set {input_index + 1}, Scenario: {scenario_name}, Payback Period without Additional Cost: Not achieved within the projection period")
 
-# Export the DataFrames to an Excel file with multiple sheets
+        # Calculate average solar consumption percentage
+        average_solar_consumption_percentage = sum(solar_consumption_percentages) / years_projection
+        print(f"Scenario: {scenario_name}, Average Solar Consumption Percentage: {average_solar_consumption_percentage:.2f}%")
+
+        # Store summary data for this scenario
+        summary_data = {
+            'Scenario': scenario_name,
+            'Input Set': input_index + 1,
+            'Cost per kWp (RM/kWp)': cost_per_kwp,
+            'Installed Capacity (kWp)': capacity_kWp,
+            'PV Investment Cost (RM)': base_investment_cost,
+            'Overall Investment Cost with Structure (RM)': total_investment_cost,
+            'Average Annual Building Load (kWh/year)': sum(annual_consumptions) / years_projection,
+            'Performance Drop (%)': performance_drop * 100,
+            'PV IRR (%)': irr_base * 100,
+            'Overall IRR (%)': irr_total * 100,
+            'PV Payback Period (years)': payback_period_base if payback_period_base else 'Not achieved',
+            'Overall Payback Period (years)': payback_period_total if payback_period_total else 'Not achieved',
+            'Average Annual Solar Yield (kWh/year)': sum(pv_generations) / years_projection,
+            'Consumption Percentage (%)': average_solar_consumption_percentage,
+            'Specific Yield (kWh/kWp/year)': specific_yield
+        }
+        scenario_results[f"{scenario_name}_summary_{input_index + 1}"] = pd.DataFrame([summary_data])
+
+# Export the DataFrames to an Excel file with a summary table and scenario details
 with pd.ExcelWriter('solar_financial_model_scenarios_results.xlsx', engine='openpyxl') as writer:
     input_data.to_excel(writer, sheet_name='Input Details', index=False)
+    summary_list = []
     for scenario_key, df in scenario_results.items():
-        df.to_excel(writer, sheet_name=scenario_key, index=False)
+        if 'summary' in scenario_key:
+            summary_list.append(df)
+        else:
+            df.to_excel(writer, sheet_name=scenario_key, index=False)
+    if summary_list:
+        pd.concat(summary_list).to_excel(writer, sheet_name='Summary', index=False)
 
 print("Results have been exported to 'solar_financial_model_scenarios_results.xlsx'")
