@@ -20,10 +20,10 @@ for input_index, input_row in input_data.iterrows():
 
     # Financial Parameters
     base_electricity_tariff = input_row['Electricity Tariff (RM/kWh)']
-    tnb_buyback_rate = input_row['TNB Buyback Rate (RM/kWh)']
+    base_tnb_buyback_rate = input_row['TNB Buyback Rate (RM/kWh)']
     cost_per_kwp = input_row['Cost per kWp (RM/kWp)']
     additional_structure_cost = input_row['Additional Structure Cost (RM)']
-    opex = input_row['OPEX (RM)']
+    base_opex = input_row['OPEX (RM)']
     tariff_hike_percentage = input_row['Tariff Hike Percentage (%)'] / 100
     tariff_hike_interval = int(input_row['Tariff Hike Interval (years)'])
     buyback_hike_percentage = input_row['Buyback Hike Percentage (%)'] / 100
@@ -91,8 +91,10 @@ for input_index, input_row in input_data.iterrows():
         initial_investment_total = cumulative_savings_total
         initial_investment_base = cumulative_savings_base
 
-        # Initialize electricity tariff for each scenario
+        # Initialize tariff for each scenario
         electricity_tariff = base_electricity_tariff
+        tnb_buyback_rate = base_tnb_buyback_rate
+        opex = base_opex
 
         for year in range(1, years_projection + 1):
             # Update electricity tariff based on hike interval
@@ -176,8 +178,8 @@ for input_index, input_row in input_data.iterrows():
             'Capital Expense (RM)': capital_expenses,
             'Total Expense (RM)': total_expenses,
             'Total Income (RM)': total_incomes,
+            'Cumulative Cash Flow without Additional Cost (RM)': cumulative_cash_flows_base,
             'Cumulative Cash Flow with Additional Cost (RM)': cumulative_cash_flows_total,
-            'Cumulative Cash Flow without Additional Cost (RM)': cumulative_cash_flows_base
         }
 
         scenario_key = f"Input_{input_index + 1}_{scenario_name}"
