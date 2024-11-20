@@ -193,8 +193,8 @@ for input_index, input_row in input_data.iterrows():
         scenario_results[scenario_key] = pd.DataFrame(data)
 
         # Calculate IRR using numpy_financial's irr function (with and without additional installation cost)
-        cash_flows_total = [-total_investment_cost] + [total_incomes[year] - total_expenses[year] for year in range(years_projection)]
-        cash_flows_base = [-base_investment_cost] + [energy_savings[year] + exported_energy_savings[year] - opex_values[year] for year in range(years_projection)]
+        cash_flows_total = [total_incomes[year] - total_expenses[year] for year in range(years_projection)]
+        cash_flows_base = [total_incomes[year] - total_expenses_base[year] for year in range(years_projection)]
 
         irr_total = npf.irr(cash_flows_total)
         irr_base = npf.irr(cash_flows_base)
