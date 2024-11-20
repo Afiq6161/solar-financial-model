@@ -33,8 +33,8 @@ for input_index, input_row in input_data.iterrows():
     opex_start_year = int(input_row['OPEX Start Year'])
     energy_export_allowed = input_row['Energy Export Allowed']
 
-    total_investment_cost = capacity_kWp * cost_per_kwp + additional_structure_cost
     base_investment_cost = capacity_kWp * cost_per_kwp  # Without additional installation cost
+    total_investment_cost = base_investment_cost + additional_structure_cost
     tax_saving_gita = 0.3 * base_investment_cost  # 30% tax saving from GITA
 
     # Scenario Definitions
@@ -82,14 +82,14 @@ for input_index, input_row in input_data.iterrows():
         tnb_buyback_rates = []
         opex_values = []
         capital_expenses = []
+        capital_expenses_base = []
         total_expenses = []
+        total_expenses_base = []
         total_incomes = []
 
         # Calculate PV Generation and Annual Consumption for each year
-        cumulative_savings_total = -total_investment_cost
-        cumulative_savings_base = -base_investment_cost
-        initial_investment_total = cumulative_savings_total
-        initial_investment_base = cumulative_savings_base
+        cumulative_savings_total = 0  # Starting at 0 since initial investment is accounted in capital expense
+        cumulative_savings_base = 0  # Starting at 0 since initial investment is accounted in capital expense
 
         # Initialize tariff for each scenario
         electricity_tariff = base_electricity_tariff
@@ -145,11 +145,16 @@ for input_index, input_row in input_data.iterrows():
 
             # Capital Expenses (initial investment cost)
             capital_expense = total_investment_cost if year == 1 else 0
+            capital_expense_base = base_investment_cost if year == 1 else 0
             capital_expenses.append(capital_expense)
+            capital_expenses_base.append(capital_expense_base)
 
             # Total Expenses for the year (OPEX + Capital Expenses)
             total_expense = opex_values[-1] + capital_expense
+            total_expense_base = opex_values[-1] + capital_expense_base
             total_expenses.append(total_expense)
+            total_expenses_base.append(total_expense_base)
+
 
             # Total Income for the year (Energy Savings + Exported Energy Savings + Tax Savings)
             total_income = consumption_saving + export_saving + tax_saving
@@ -158,7 +163,7 @@ for input_index, input_row in input_data.iterrows():
             # Cumulative Cash Flow Calculation (with and without additional installation cost)
             annual_cash_flow = total_income - total_expense
             cumulative_savings_total += annual_cash_flow
-            cumulative_savings_base += (total_income - opex_values[-1])  # Without tax savings and additional installation cost
+            cumulative_savings_base += (total_income - total_expense_base)  # Without tax savings and additional installation cost
             cumulative_cash_flows_total.append(cumulative_savings_total)
             cumulative_cash_flows_base.append(cumulative_savings_base)
 
@@ -175,19 +180,21 @@ for input_index, input_row in input_data.iterrows():
             'Exported Energy Saving (RM)': exported_energy_savings,
             'Tax Saving from GITA (RM)': tax_savings,
             'OPEX (RM)': opex_values,
+            'Capital Expense (base) (RM)': capital_expenses_base,
             'Capital Expense (RM)': capital_expenses,
+            'Total Expense (base)(RM)': total_expenses_base,
             'Total Expense (RM)': total_expenses,
             'Total Income (RM)': total_incomes,
-            'Cumulative Cash Flow without Additional Cost (RM)': cumulative_cash_flows_base,
-            'Cumulative Cash Flow with Additional Cost (RM)': cumulative_cash_flows_total,
+            'Cumulative Cash Flow (base) (RM)': cumulative_cash_flows_base,
+            'Cumulative Cash Flow (RM)': cumulative_cash_flows_total,
         }
 
         scenario_key = f"Input_{input_index + 1}_{scenario_name}"
         scenario_results[scenario_key] = pd.DataFrame(data)
 
         # Calculate IRR using numpy_financial's irr function (with and without additional installation cost)
-        cash_flows_total = [initial_investment_total] + [total_incomes[year] - total_expenses[year] for year in range(years_projection)]
-        cash_flows_base = [initial_investment_base] + [energy_savings[year] + exported_energy_savings[year] - opex_values[year] for year in range(years_projection)]
+        cash_flows_total = [total_incomes[year] - total_expenses[year] for year in range(years_projection)]
+        cash_flows_base = [total_incomes[year] - total_expenses_base[year] for year in range(years_projection)]
 
         irr_total = npf.irr(cash_flows_total)
         irr_base = npf.irr(cash_flows_base)
@@ -199,13 +206,13 @@ for input_index, input_row in input_data.iterrows():
         payback_period_base = None
         for year, cumulative_cash_flow in enumerate(cumulative_cash_flows_total, start=1):
             if cumulative_cash_flow >= 0:
-                previous_cash_flow = cumulative_cash_flows_total[year - 2] if year > 1 else initial_investment_total
+                previous_cash_flow = cumulative_cash_flows_total[year - 2] if year > 1 else -total_investment_cost
                 payback_period_total = year - 1 + (abs(previous_cash_flow) / (cumulative_cash_flow - previous_cash_flow))
                 break
 
         for year, cumulative_cash_flow in enumerate(cumulative_cash_flows_base, start=1):
             if cumulative_cash_flow >= 0:
-                previous_cash_flow = cumulative_cash_flows_base[year - 2] if year > 1 else initial_investment_base
+                previous_cash_flow = cumulative_cash_flows_base[year - 2] if year > 1 else -base_investment_cost
                 payback_period_base = year - 1 + (abs(previous_cash_flow) / (cumulative_cash_flow - previous_cash_flow))
                 break
 
